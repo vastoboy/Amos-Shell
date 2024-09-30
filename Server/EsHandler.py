@@ -1,8 +1,6 @@
-from elasticsearch import Elasticsearch
-from prettytable import PrettyTable
 import json
-
-
+from prettytable import PrettyTable
+from elasticsearch import Elasticsearch
 
 
 class EsHandler:
@@ -13,13 +11,13 @@ class EsHandler:
         self.es = Elasticsearch(es_url)
 
 
-
     #tabulate es date using prettytable
     def tabulate_data(self, resp):
         for hit in resp:
-            self.pt.field_names = ["Client ID", "Mac Address", "IP", "System", "Node Name", "Release", "Version", "Machine", "Date-Joined", "Time-Joined", "User"]
+            self.pt.field_names = ["Client ID", "Account-ID", "Mac Address", "IP", "System", "Node Name", "Release", "Version", "Machine", "Date-Joined", "Time-Joined", "User"]
             self.pt.add_row([
                          hit["_id"],
+                         hit["_source"].get("account-id"),
                          hit["_source"].get("mac-address"),
                          hit["_source"].get("ip"),
                          hit["_source"].get("os"),
@@ -31,10 +29,8 @@ class EsHandler:
                          hit["_source"].get("time-joined"),
                          hit["_source"].get("user")
                          ])
-
         print(self.pt)
         self.pt.clear()
-
 
 
     #saves first portion of client file in index
@@ -57,7 +53,6 @@ class EsHandler:
             self.tabulate_data(response['hits']['hits'])
         except Exception as e:
                 print(e)
-
 
 
     #retrieve client information documents from elastic search
@@ -90,7 +85,6 @@ class EsHandler:
             print("[-]Document does not exist!!! \n")
 
 
-
     #deletes all documents in specified index
     def delete_all_docs(self):
         try:
@@ -99,7 +93,6 @@ class EsHandler:
         except Exception as e:
             print(e)
             print("[+]Unable delete documents")
-
 
 
     #displays specified feilds in a document
@@ -118,10 +111,8 @@ class EsHandler:
             print("[-]Document does not exist!!! /n")
 
 
-
-
     #retrieves the specified feild in a document
-    def get_field(self, client_id, feild_parameter):
+    def get_field(self, client_id: str, feild_parameter):
         try:
             resp = self.es.get(index=self.db_name, id=client_id)
             resp = resp['_source'].get(feild_parameter)
@@ -134,12 +125,10 @@ class EsHandler:
             print("[-]Field does not exist")
 
 
-
-
     #checks if connected client is present in elasticsearch index
-    def is_client_present(self, mac_address):
+    def is_client_present(self, account_id: str):
         try:
-            resp = self.es.search(index=self.db_name,  query={"match": {"mac-address": mac_address}})
+            resp = self.es.search(index=self.db_name,  query={"match": {"account-id": account_id}})
             if (resp['hits']['total']['value'] > 0):
                 return True
             else:
@@ -148,13 +137,12 @@ class EsHandler:
             print("[-]Document does not exist!!! /n")
 
 
-
     #updates existing client document using client mac address as identifier
-    def update_document(self, mac_address, client_data):
+    def update_document(self, account_id: str, client_data):
         client_id = str()
 
         try:
-            resp = self.es.search(index=self.db_name,  query={"match": {"mac-address": mac_address}})
+            resp = self.es.search(index=self.db_name,  query={"match": {"account-id": account_id}})
             for hit in resp['hits']['hits']:
                 client_id = (hit["_id"])
 
@@ -165,9 +153,7 @@ class EsHandler:
             print("[-]Document does not exist!!! /n")
 
 
-
-
-    def is_client_connected(self, client_ip):
+    def is_client_connected(self, client_ip: str):
         try:
             resp = self.es.search(index=self.db_name, query={"match": {"ip": client_ip}})
             self.tabulate_data(resp)
@@ -175,7 +161,6 @@ class EsHandler:
         except Exception as e:
             print(f"An error occurred: {e}")
 
-        
 
     def get_client_ip(self, client_id):
         try:
@@ -184,7 +169,6 @@ class EsHandler:
 
         except Exception as e:
             print(f"An error occurred: {e}")
-
 
 
     #retrieves document from index

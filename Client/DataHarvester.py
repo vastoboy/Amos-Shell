@@ -1,10 +1,10 @@
-import platform
-from getmac import get_mac_address as gma
-import getpass
-from datetime import timedelta
-import datetime
 import socket
+import getpass
 import requests
+import datetime
+import platform
+from datetime import timedelta
+from getmac import get_mac_address as gma
 
 
 class DataHarvester:

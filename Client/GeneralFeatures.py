@@ -1,18 +1,16 @@
-from urllib import request, parse
-import time
 import os
+import time
 import win32gui
 import win32ui
 import win32con
 from PIL import Image
 from datetime import datetime
-
+from urllib import request, parse
 
 class GeneralFeatures:
 
     def __init__(self):
         self.now = datetime.now()
-
 
 
     def screenshot(self):
