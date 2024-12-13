@@ -1,3 +1,4 @@
+
 # Server's IP address or hostname
 SERVER_IP = 'localhost'
 
@@ -16,9 +17,11 @@ CMD_REQUEST = "/amos?center="
 # Path to use for signifying command output or errors from a client using HTTP POST
 CMD_RESPONSE = "/inventory"
 
+# Path to use for signifying sending client credentials
+CLIENT_CREDENTIALS = "/credentials"
+
 # POST variable name to use for assigning to command output from a client
 RESPONSE_KEY = "index"
 
 # Define a sleep delay time in seconds for re-connection attempts
-DELAY = 3
-
+DELAY = 20

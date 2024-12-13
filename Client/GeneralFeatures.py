@@ -5,7 +5,7 @@ import win32ui
 import win32con
 from PIL import Image
 from datetime import datetime
-from urllib import request, parse
+
 
 class GeneralFeatures:
 
