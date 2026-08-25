@@ -1,5 +1,5 @@
 .venv-windows
 .venv-wsl
 .idea
-es_password.txt
+/es_password.txt
 
