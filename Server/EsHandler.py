@@ -17,6 +17,7 @@ class EsHandler:
             self.pt.field_names = ["Client ID", "Mac Address", "IP", "System", "Node Name", "Release", "Version", "Machine", "Date-Joined", "Time-Joined", "User"]
             self.pt.add_row([
                          hit["_id"],
+
                          hit["_source"].get("mac-address"),
                          hit["_source"].get("ip"),
                          hit["_source"].get("os"),
@@ -35,13 +36,12 @@ class EsHandler:
     # saves first portion of client file in index
     def index_client_data(self, client_info):
             doc = json.dumps(client_info, indent=4, ensure_ascii=False)
-
             try:
                 # store client info in elasticsearch index
                 resp = self.es.index(index=self.db_name, document=doc)
-                print(resp)
+                return resp.get('_id') # return client id
             except Exception as e:
-                print("[+]Unable to store data!!!")
+                print("[-] Unable to store data!!!")
                 print(e)
 
 
@@ -71,10 +71,10 @@ class EsHandler:
             if hits:
                 return {'_id': hits[0]['_id'], '_source': hits[0]['_source']}
             else:
-                print(f"No document found with ID: {client_id}")
+                print(f"[-] No document found with ID: {client_id}")
                 return None
         except Exception as e:
-            print(f"An error occurred: {e}")
+            print(f"[-] An error occurred: {e}")
             return None
 
 
@@ -82,19 +82,19 @@ class EsHandler:
     def delete_doc(self, client_id):
         try:
             self.es.delete(index=self.db_name, id=client_id)
-            print("[+]Document deleted successfully!!! \n")
+            print("[+] Document deleted successfully!!! \n")
         except:
-            print("[-]Document does not exist!!! \n")
+            print("[-] Document does not exist!!! \n")
 
 
     # deletes all documents in specified index
     def delete_all_docs(self):
         try:
             self.es.delete_by_query(index=self.db_name, body={"query": {"match_all": {}}})
-            print("[+]Documents deleted sucessfully!!!")
+            print("[+] Documents deleted sucessfully!!!")
         except Exception as e:
             print(e)
-            print("[+]Unable delete documents")
+            print("[-] Unable delete documents")
 
 
     # displays specified feilds in a document
@@ -110,7 +110,7 @@ class EsHandler:
             self.pt.clear()
 
         except Exception as e:
-            print("[-]Document does not exist!!! /n")
+            print("[-] Document does not exist!!! /n")
 
 
     # retrieves the specified feild in a document
@@ -124,27 +124,13 @@ class EsHandler:
             else:
                 print(json.dumps(resp, indent=4))
         except:
-            print("[-]Field does not exist")
-
-
-    """
-    # checks if connected client is present in elasticsearch index
-    def is_client_present(self, account_id: str):
-        try:
-            resp = self.es.search(index=self.db_name,  query={"match": {"account-id": account_id}})
-            if (resp['hits']['total']['value'] > 0):
-                return True
-            else:
-                return False
-        except Exception as e:
-            print("[-]Document does not exist!!! /n")
-    """
+            print("[-] Field does not exist")
 
 
     # Checks if connected client is present in Elasticsearch index by MAC address
-    def is_client_present(self, mac_address: str):
+    def is_client_present(self, user: str):
         try:
-            resp = self.es.search(index=self.db_name, query={"match": {"mac-address": mac_address}})
+            resp = self.es.search(index=self.db_name, query={"match": {"user": user}})
             if resp['hits']['total']['value'] > 0:
                 return True
             else:
@@ -163,7 +149,7 @@ class EsHandler:
 
             resp = self.es.update(index=self.db_name, id=client_id, doc=client_data)
         except Exception as e:
-            print("[-]Document does not exist!!! /n")
+            print("[-] Document does not exist!!! /n")
 
 
     def is_client_connected(self, client_ip: str):
@@ -171,7 +157,7 @@ class EsHandler:
             resp = self.es.search(index=self.db_name, query={"match": {"ip": client_ip}})
             self.tabulate_data(resp)
         except Exception as e:
-            print(f"An error occurred: {e}")
+            print(f"[-] An error occurred: {e}")
 
 
     def get_client_ip(self, client_id: str):
@@ -179,7 +165,7 @@ class EsHandler:
             resp = self.es.get(index=self.db_name, id=client_id)
             return resp["_source"]["ip"]
         except Exception as e:
-            print(f"An error occurred: {e}")
+            print(f"[-] An error occurred: {e}")
 
 
     def get_client_id(self, key: str, mac_address: str):
@@ -196,11 +182,11 @@ class EsHandler:
             if resp["hits"]["hits"]:
                 return resp["hits"]["hits"][0]["_id"]
             else:
-                print("No matching client found.")
+                print("[-] No matching client found.")
                 return None
 
         except Exception as e:
-            print(f"An error occurred: {e}")
+            print(f"[-] An error occurred: {e}")
             return None
 
 
@@ -211,5 +197,5 @@ class EsHandler:
             print(json.dumps(resp['_source'], indent=4))
             return resp
         except:
-            print("[-]Document does not exist!!! /n")
+            print("[-] Document does not exist!!! /n")
 

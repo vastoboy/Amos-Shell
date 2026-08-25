@@ -4,7 +4,7 @@ import getpass
 import datetime
 import platform
 from getmac import get_mac_address as gma
-from client_settings import SERVER_IP
+
 
 
 class DataHarvester:
@@ -34,8 +34,10 @@ class DataHarvester:
                          "user": getpass.getuser()
                     }
 
-        system_info = json.dumps(system_info)
 
+        system_info = json.dumps(system_info)
         return system_info
+
+
 
 
