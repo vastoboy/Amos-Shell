@@ -3,7 +3,7 @@
 SERVER_IP = 'localhost'
 
 # Server Port
-SERVER_PORT = 8081
+SERVER_PORT = 8082
 
 # Keep the User-Agent up-to-date and looking like a modern browser; Python dictionary format
 HEADER = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"}

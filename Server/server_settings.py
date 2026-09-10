@@ -6,7 +6,7 @@ from EsHandler import EsHandler
 SERVER_IP = 'localhost'
 
 # Server Port
-SERVER_PORT = 8081
+SERVER_PORT = 8082
 
 # Instance of ES_HANDLER will be used to interact with Elasticsearch.
 ES_HANDLER = EsHandler("amos-index", "http://localhost:9200")

