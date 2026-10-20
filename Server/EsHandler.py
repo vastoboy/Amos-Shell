@@ -35,14 +35,12 @@ class EsHandler:
 
     # saves first portion of client file in index
     def index_client_data(self, client_info):
-            doc = json.dumps(client_info, indent=4, ensure_ascii=False)
-            try:
-                # store client info in elasticsearch index
-                resp = self.es.index(index=self.db_name, document=doc)
-                return resp.get('_id') # return client id
-            except Exception as e:
-                print("[-] Unable to store data!!!")
-                print(e)
+        try:
+            resp = self.es.index(index=self.db_name, document=client_info)
+            return resp.get('_id')
+        except Exception as e:
+            print("[-] Unable to store data!!!")
+            print(e)
 
 
     # retrieve client information documents from elastic search
@@ -168,25 +166,16 @@ class EsHandler:
             print(f"[-] An error occurred: {e}")
 
 
-    def get_client_id(self, key: str, mac_address: str):
+
+    def get_client_id(self, key: str, value: str):
         try:
-            # Search for the client using the system-name field
-            query = {
-                "query": {
-                    "match": {
-                        key: mac_address
-                    }
-                }
-            }
+            query = {"query": {"match": {key: value}}}
             resp = self.es.search(index=self.db_name, body=query)
             if resp["hits"]["hits"]:
                 return resp["hits"]["hits"][0]["_id"]
-            else:
-                print("[-] No matching client found.")
-                return None
-
+            return None
         except Exception as e:
-            print(f"[-] An error occurred: {e}")
+            print(f"[-] get_client_id error: {e}")
             return None
 
 
@@ -198,4 +187,3 @@ class EsHandler:
             return resp
         except:
             print("[-] Document does not exist!!! /n")
-

