@@ -22,7 +22,7 @@ class GeneralFeatures:
 
 
     def screenshot(self, resize=None, quality=70):
-        img = ImageGrab.grab()  # full screen
+        img = ImageGrab.grab()
         if resize:
             img.thumbnail(resize)
         buf = io.BytesIO()
@@ -57,6 +57,10 @@ class GeneralFeatures:
         if not ret:
             raise RuntimeError("JPEG encoding failed")
         return buf.tobytes()
+
+
+    def capture_audio(self):
+        pass
 
 
     # Derive a 32-byte AES key from a password and salt

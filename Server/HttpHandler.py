@@ -112,6 +112,11 @@ class MyHandler(BaseHTTPRequestHandler):
                 if current_directory:
                     CWD = current_directory
 
+                # improve naming convention
+                #camshot/screenshot
+
+
+
                 # Handle image if present
                 image_b64 = parsed.get('image', [None])[0]
                 if image_b64:

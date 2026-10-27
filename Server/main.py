@@ -257,7 +257,7 @@ class AmosServer:
                         if cmd_id in response_storage:
                             response = response_storage.pop(cmd_id)
                             break
-                    time.sleep(0.2)  # small sleep to avoid busy-wait
+                    time.sleep(0.2)  # minor sleep to avoid busy-wait
 
                 if response is not None:
                     if '&cwd=' in response:
