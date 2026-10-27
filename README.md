@@ -36,9 +36,6 @@ A lightweight C2 (Command & Control) framework that uses HTTP for communication 
 - **Required Python Packages**: 
   ```bash
   pip install -r requirements.txt
-
-
-
 ---
 
 ## Usage
