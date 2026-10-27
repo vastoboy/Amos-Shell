@@ -62,8 +62,7 @@ Once the server is running, you can use the following commands:
 
 ### 4. Interactive Shell Commands
 While inside a `shell <client_id>` session:
-- Type standard OS commands (e.g., `dir`, `ls`, `whoami`, `tasklist`)
-- `cd <path>` - Change directory
+- Type standard OS commands (e.g., `cd`, `dir`, `ls`, `whoami`, `tasklist`)
 - `screenshot` - Capture the target's screen
 - `camshot` - Capture an image from the target's webcam
 - `getfile <path>` - Download a file from the target

